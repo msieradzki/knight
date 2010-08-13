@@ -3,16 +3,13 @@ module Parser where
 import Data.Char
 import System.Environment
 import System.IO
-import GHC.Float
-import GHC.Word
-import GHC.Base as B
-import Numeric
 import Data.Set as Set
 import Data.Map as Map
 import Control.Monad.State.Strict as C
 
-import qualified LLVM.Core as Core
+--import qualified LLVM.Core as Core
 import Text.ParserCombinators.Parsec
+
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language
 import qualified Text.ParserCombinators.Parsec.Expr as E
@@ -25,7 +22,11 @@ languageStyle = emptyDef
 	,	nestedComments = True
 	,	identStart = letter
 	,	identLetter = alphaNum <|> oneOf "_"
-	,	reservedNames = ["return"]
+	,	reservedNames = ["return", "const", "var",
+				"true", "false", "public",
+				"private", "function", "class",
+				"if", "then", "else",
+				"while", "do", "for"]
 	,	reservedOpNames = ["*", "/","+","-", "=",
 				"<",">","<=",">=","==","!=",
 				"and","or","(",")"]
@@ -57,7 +58,10 @@ runTest p input = parseTest (do {
 
 parse_program :: Parser [Statement]
 parse_program = do
-	many parse_global_statement
+	whiteSpace
+	s <- many parse_global_statement
+	eof
+	return s
 
 parse_global_statement :: Parser Statement
 parse_global_statement =
@@ -126,13 +130,13 @@ parse_return :: Parser Statement
 parse_return =
 	do
 		reserved "return"
-		do
+		(do
 			semi
 			return $ ReturnStatement Nothing
-		<|> do
+		 <|> do
 			expr <- parse_expression
 			semi
-			return $ ReturnStatement $ Just expr
+			return $ ReturnStatement $ Just expr)
 	<?> "return"
 
 -- FIXME else
@@ -262,6 +266,9 @@ parse_primitive =
 	<|> do
 		reserved "function"
 		parse_fun_expr
+--	<|> do
+--		id <- identifier
+--		resolve id
 	<?>
 		"primitive"
 		
@@ -401,13 +408,14 @@ table = [[opPrefix "-" create_neg_expr]
 		opAssign s f assoc = E.Infix (do { reservedOp s ; return f} <?> "assignment") assoc
 		keywordOp s f assoc = E.Infix (do { reserved s ; return f} <?> "operator") assoc
 
+-- FIXME
 factor = parens expr
 	<|> parse_constant
 	<|> try parse_function_call
 	<|> parse_variable
 	<?> "simple expression"
 
--- FIXME: float constant i niejednoznacznosc
+-- FIXME: ambiguous
 parse_constant = do
 	reserved "true"
 	return (ConstantExpression (BooleanConstant True))
