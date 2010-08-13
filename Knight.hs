@@ -25,7 +25,7 @@ languageStyle = emptyDef
 	,	commentLine = "//"
 	,	nestedComments = True
 	,	identStart = letter
-	,	identLetter = alphaNum <|> oneOf '_'
+	,	identLetter = alphaNum <|> oneOf "_"
 	,	reservedNames = ["return"]
 	,	reservedOpNames = ["*", "/","+","-", "=",
 				"<",">","<=",">=","==","!=",
@@ -63,8 +63,9 @@ parse_program = do
 parse_global_statement :: Parser Statement
 parse_global_statement =
 	do
-		reserved "public"
-		<|> reserved "private"
+		do
+			reserved "public"
+			<|> reserved "private"
 		parse_script_decl
 	<|> do
 		reserved "function"
@@ -73,13 +74,15 @@ parse_global_statement =
 		reserved "class"
 		parse_script_class
 	<|> do
-		reserved "const"
-		<|> reserved "var"
+		do
+			reserved "const"
+			<|> reserved "var"
 		parse_script_var
 	<|>
 		parse_statement
 
 -- in original it returns list that contains mix of these 3 types
+parse_block :: Parser Statement
 parse_block =
 	do
 		braces $ do
@@ -120,7 +123,18 @@ parse_return :: Parser Statement
 parse_return =
 	do
 		reserved "return"
-		return $ ReturnStatement
+		do
+			semi
+			return $ ReturnStatement Nothing
+		<|> do
+			expr <- parse_expression
+			semi
+			return $ ReturnStatement $ Just expr
+	<?> "return"
+
+--(do {
+--	reserved "return" ;
+--	((do { semi; return (ReturnInstruction Nothing) }) <|> (do {e <- expr; semi; return (ReturnInstruction (Just e)) })) <?> "return" })
 
 parse_if :: Parser Statement
 parse_if =
@@ -150,7 +164,18 @@ parse_do =
 		cond <- parens parse_expression
 		return $ DoStatement cond block
 
-parse_for = return ForStatement
+parse_for =
+	do
+		reserved "for"
+		(init, before, after) <- parens $ do
+			a <- parse_block
+			semi
+			b <- parse_block
+			semi
+			c <- parse_block
+			return $ (a, b, c)
+		body <- parse_block
+		return $ ForStatement init before after body
 
 parse_expression :: Parser Expression
 parse_expression = E.buildExpressionParser table factor <?> "expression"
@@ -236,8 +261,9 @@ parse_prefix :: Parser Expression
 parse_prefix =
 	do
 		reserved "{"
-		parse_expression
+		expr <- parse_expression
 		reserved "}"
+		return expr
 	<|> do
 		reserved "new"
 		expr <- parse_expression
@@ -247,6 +273,7 @@ parse_prefix =
 
 parse_primary = undefined
 
+parse_script_decl :: Parser Statement
 parse_script_decl =
 	do
 		reserved "function"
@@ -258,11 +285,21 @@ parse_script_decl =
 		reserved "var"
 		parse_script_var
 
-parse_script_class = identifier
+parse_script_class :: Parser Statement
+parse_script_class =
+	do
+		return $ DeclarationStatement ClassDeclaration
 
-parse_script_fun = identifier
+parse_script_fun :: Parser Statement
+parse_script_fun =
+	do
+		id <- identifier
+		return $ DeclarationStatement FunctionDeclaration
 
-parse_script_var = identifier
+parse_script_var =
+	do
+		id <- identifier
+		return $ DeclarationStatement VariableDeclaration
 
 data Constant = NullConstant | IntegerConstant Integer | BooleanConstant Bool | FloatConstant Float | StringConstant String deriving (Eq, Show)
 
@@ -270,10 +307,12 @@ data Operator = UnaryNegate | BinaryAdd | BinarySubtract | BinaryMul | BinaryDiv
 
 data Expression = ConstantExpression Constant | UnaryExpression Expression Operator | BinaryExpression Expression Expression Operator | AssignmentExpression Expression Expression | NewExpression Expression deriving (Eq, Show)
 
-data Statement  = ExpressionStatement Expression | ReturnStatement (Maybe Expression) | IfStatement Expression Block Block | WhileStatement Expression Block | DoStatement Expression Block | ForStatement Expression Expression Expression Block deriving (Eq, Show)
+-- GADT for if, for, while for block?
+data Statement = ExpressionStatement Expression | ReturnStatement (Maybe Expression) | IfStatement Expression Statement Statement | WhileStatement Expression Statement | DoStatement Expression Statement | ForStatement Statement Statement Statement Statement | DeclarationStatement Declaration | BlockStatement [Statement] deriving (Eq, Show)
 
---wrong
-type Block = [Statement]
+data Declaration = FunctionDeclaration | VariableDeclaration | ConstantDeclaration | ClassDeclaration deriving (Eq, Show)
+
+type Id = String
 
 {-
 
