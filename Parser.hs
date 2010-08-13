@@ -1,5 +1,4 @@
-module Compiler where
-
+module Parser where
 
 import Data.Char
 import System.Environment
@@ -80,6 +79,8 @@ parse_global_statement =
 		parse_script_var
 	<|>
 		parse_statement
+	<?>
+		"global statement"
 
 -- in original it returns list that contains mix of these 3 types
 parse_block :: Parser Statement
@@ -96,6 +97,7 @@ parse_block =
 				parse_local_class
 			<|>
 				parse_statement
+	<?> "block"
 
 parse_statement :: Parser Statement
 parse_statement =
@@ -106,6 +108,7 @@ parse_statement =
 	<|> parse_for
 	<|> parse_return
 	<|> parse_expr_stmt -- try might be needed
+	<?> "statement"
 
 parse_class = undefined
 
@@ -132,10 +135,7 @@ parse_return =
 			return $ ReturnStatement $ Just expr
 	<?> "return"
 
---(do {
---	reserved "return" ;
---	((do { semi; return (ReturnInstruction Nothing) }) <|> (do {e <- expr; semi; return (ReturnInstruction (Just e)) })) <?> "return" })
-
+-- FIXME else
 parse_if :: Parser Statement
 parse_if =
 	do
@@ -146,6 +146,8 @@ parse_if =
 		reserved "else"
 		block_false <- parse_block
 		return $ IfStatement cond block_true block_false
+	<?>
+		"if statement"
 
 parse_while :: Parser Statement
 parse_while =
@@ -154,6 +156,8 @@ parse_while =
 		cond <- parens parse_expression
 		block <- parse_block
 		return $ WhileStatement cond block
+	<?>
+		"while statement"
 
 parse_do :: Parser Statement
 parse_do =
@@ -163,6 +167,8 @@ parse_do =
 		reserved "while"
 		cond <- parens parse_expression
 		return $ DoStatement cond block
+	<?>
+		"do while statement"
 
 parse_for =
 	do
@@ -176,6 +182,8 @@ parse_for =
 			return $ (a, b, c)
 		body <- parse_block
 		return $ ForStatement init before after body
+	<?>
+		"for statement"
 
 parse_expression :: Parser Expression
 parse_expression = E.buildExpressionParser table factor <?> "expression"
@@ -456,52 +464,6 @@ instance Show Constant where
 	show (StringConstant s) = show s
 
 data Expression = ConstantExpression Constant | UnaryExpression Expression Operator | BinaryExpression Expression Expression Operator | VariableExpression Id | Assignment Expression Expression | FunctionCall Id [Expression] | ArrayAccess Expression Expression | LocalExpression Id | ArgumentExpression Id | AnalysedFunctionCall ClrType Id [Expression] deriving (Eq, Show)
-
-create_add_expr a b = BinaryExpression a b BinaryAdd
-create_subtract_expr a b = BinaryExpression a b BinarySubtract
-create_mul_expr a b = BinaryExpression a b BinaryMul
-create_div_expr a b = BinaryExpression a b BinaryDiv
-create_mod_expr a b = BinaryExpression a b BinaryModulo
-create_neg_expr a = UnaryExpression a UnaryNegate
-create_g_expr a b = BinaryExpression a b BinaryGreater
-create_ge_expr a b = BinaryExpression a b BinaryGreaterEqual
-create_l_expr a b = BinaryExpression a b BinaryLess
-create_le_expr a b = BinaryExpression a b BinaryLessEqual
-create_equal_expr a b = BinaryExpression a b BinaryEqual
-create_ne_expr a b = BinaryExpression a b BinaryNotEqual
-create_and_expr a b = BinaryExpression a b BinaryAnd
-create_or_expr a b = BinaryExpression a b BinaryOr
-create_assign_expr a b = Assignment a b
-
-data AnalysisState = AnalysisState { warnings :: [String], errors :: [String] }
-
-fresh_analysis_state = AnalysisState [] []
-add_warning_helper sem_state warning = sem_state { warnings = (warnings sem_state) ++ [warning] }
-add_error_helper sem_state error = sem_state { errors = (errors sem_state) ++ [error] }
-
-add_warning warning = do
-	state <- get
-	put (add_warning_helper state warning)
-
-add_error error = do
-	state <- get
-	put (add_error_helper state error)
-
-display_analysis_state :: AnalysisState -> IO ()
-display_analysis_state state = do
-	putStrLn ("Warnings: " ++ show (length (warnings state)))
-	forM_ (warnings state) putStrLn
-	putStrLn ("Errors: " ++ show (length (errors state)))
-	forM_ (errors state) putStrLn
-
-analysis_state_ok state = errors state == []
-
--- it can be only the last instruction in the function
-check_return_instruction :: [Instruction] -> Bool
-check_return_instruction [] = True
-check_return_instruction [(ReturnInstruction m)] = True
-check_return_instruction ((ReturnInstruction m):t) = False
-check_return_instruction (h:t) = check_return_instruction t
 
 
 write_to_file :: String -> String -> IO ()
